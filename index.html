@@ -1,1 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentic iOS Lock Screen</title>
+    <style>
+        /* BASE & TYPOGRAPHY */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+        }
 
+        body {
+            height: 100vh;
+            background: url('https://images.unsplash.com/photo-1620121692029-d088224ddc74?q=80&w=2832&auto=format&fit=crop') no-repeat center center;
+            background-size: cover;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            overflow: hidden; 
+            color: white;
+            position: relative;
+        }
+
+        /* MAIN LAYOUT CONTAINER (Lock Screen acts like a phone) */
+        .device-container {
+            width: 100%;
+            max-width: 430px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 80px 20px 40px;
+            overflow-y: auto;
+            scrollbar-width: none;
+            transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .device-container::-webkit-scrollbar { display: none; }
+        
+        /* Blur background when fullscreen weather is open */
+        body.weather-open .device-container {
+            filter: blur(20px) brightness(0.6);
+            transform: scale(0.92);
+        }
+
+        .date {
+            font-size: 1.35rem;
+            font-weight: 500;
+            margin-bottom: 2px;
+            text-shadow: 0 1px 15px rgba(0,0,0,0.4);
+            letter-spacing: 0.3px;
+        }
+
+        .time {
+            font-size: clamp(5rem, 20vw, 8rem);
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: -4px;
+            margin-bottom: 40px;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+            background: linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0.3) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.3));
+        }
+
+        .time.show-seconds {
+            font-weight: 900;
+            font-size: clamp(3.5rem, 15vw, 5rem);
+            letter-spacing: -2px;
+            filter: drop-shadow(0px 12px 24px rgba(0,0,0,0.4));
+        }
+
+        /* COMPACT WIDGET ON LOCK SCREEN */
+        .widget-panel {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.05) 100%);
+            backdrop-filter: blur(25px) saturate(160%);
+            -webkit-backdrop-filter: blur(25px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-top: 1.5px solid rgba(255, 255, 255, 0.7);
+            border-left: 1.5px solid rgba(255, 255, 255, 0.5);
+            border-radius: 32px;
+            padding: 24px;
+            width: 100%;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.15), inset 0 4px 18px rgba(255, 255, 255, 0.25);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+        
+        .widget-panel:active { transform: scale(0.97); }
+
+        .weather-left { display: flex; align-items: center; gap: 16px; }
+        .weather-icon { font-size: 2.8rem; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2)); }
+        .temp-main { font-size: 2.4rem; font-weight: 500; line-height: 1; letter-spacing: -1px; }
+        .weather-details { display: flex; flex-direction: column; gap: 2px; }
+        .condition { font-size: 1rem; font-weight: 500; }
+        .high-low { font-size: 0.9rem; color: rgba(255, 255, 255, 0.8); font-weight: 500; }
+        .location { text-align: right; font-size: 1rem; font-weight: 500; color: rgba(255, 255, 255, 0.9); }
+
+        /* FULL SCREEN WEATHER APP OVERLAY (Responsive) */
+        .fullscreen-weather {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(180deg, rgba(42, 65, 115, 0.85) 0%, rgba(20, 25, 45, 0.95) 100%);
+            backdrop-filter: blur(40px) saturate(200%);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            z-index: 100;
+            padding: 50px 20px 30px;
+            overflow-y: auto;
+            scrollbar-width: none;
+            
+            /* Hidden state */
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(100%);
+            transition: all 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .fullscreen-weather::-webkit-scrollbar { display: none; }
+
+        .fullscreen-weather.active {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+        }
+
+        /* Inner container constrains width on PC so it doesn't stretch infinitely */
+        .fs-inner-container {
+            max-width: 1100px;
+            margin: 0 auto;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+        }
+
+        /* FULLSCREEN HEADER */
+        .fs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            animation: none;
+        }
+        .fullscreen-weather.active .fs-header {
+            animation: fadeDown 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.2s;
+            opacity: 0; transform: translateY(-20px);
+        }
+        .fs-city { font-size: clamp(2.2rem, 5vw, 3.5rem); font-weight: 600; letter-spacing: -0.5px; line-height: 1.1;}
+        .fs-temp { font-size: clamp(4.5rem, 10vw, 6.5rem); font-weight: 200; line-height: 1; margin-top: 5px; }
+        .fs-cond { font-size: clamp(1.1rem, 2vw, 1.4rem); font-weight: 500; color: rgba(255,255,255,0.8); margin-top: 5px;}
+        
+        .close-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            border-radius: 50%;
+            width: 36px; height: 36px;
+            display: flex; justify-content: center; align-items: center;
+            color: white; font-size: 1.2rem; cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: background 0.3s;
+            flex-shrink: 0;
+        }
+        .close-btn:hover { background: rgba(255,255,255,0.4); }
+
+        /* 9-CARD GRAPHICS GRID (Mobile First) */
+        .graphics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            padding-bottom: 60px;
+        }
+
+        /* SUPERIOR GLASSMORPHISM FOR CARDS */
+        .graphic-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.03) 100%);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-top: 1.5px solid rgba(255, 255, 255, 0.45);
+            border-left: 1.5px solid rgba(255, 255, 255, 0.35);
+            border-radius: 24px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            min-height: 170px; /* Gives room so it won't overlap */
+            box-shadow: 0 16px 32px rgba(0,0,0,0.15), inset 0 4px 18px rgba(255, 255, 255, 0.1);
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        .card-title { font-size: 0.85rem; font-weight: 600; color: rgba(255, 255, 255, 0.7); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; flex-shrink: 0;}
+        .card-value-large { font-size: 1.8rem; font-weight: 500; line-height: 1.2; margin-bottom: 4px; flex-shrink: 0;}
+        .card-desc { font-size: 0.8rem; color: rgba(255, 255, 255, 0.8); line-height: 1.3; margin-top: auto; flex-shrink: 0;}
+
+        /* Prevent SVG from overlapping text */
+        .graphic-svg-container { 
+            position: relative; 
+            width: 100%; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            margin: 12px 0; 
+            flex: 1; /* Automatically takes available middle space */
+            min-height: 40px;
+            max-height: 90px;
+        }
+
+        /* CARD 9: FEELS LIKE (Mobile configuration) */
+        .card-feels-like {
+            grid-column: span 2; 
+            flex-direction: row; 
+            align-items: center;
+            min-height: 130px;
+        }
+        .feels-like-text { flex: 1; }
+        .feels-like-svg { width: 120px; max-height: 100px; margin-left: auto; }
+
+        /* RESPONSIVE LAYOUT FOR PC/DESKTOP */
+        @media (min-width: 768px) {
+            .fullscreen-weather {
+                padding: 60px 50px 50px;
+            }
+            .fs-header {
+                margin-bottom: 50px;
+            }
+            .graphics-grid {
+                grid-template-columns: repeat(3, 1fr); /* Horizontal Desktop Grid */
+                gap: 24px;
+            }
+            /* Make Card 9 fit seamlessly into the 3-column grid */
+            .card-feels-like {
+                grid-column: span 1;
+                flex-direction: column;
+                align-items: stretch;
+                min-height: 170px;
+            }
+            .feels-like-text { flex: unset; }
+            .feels-like-svg { width: 100%; max-height: 90px; margin-left: 0; }
+        }
+
+        /* Staggered Entrance Animations */
+        .fullscreen-weather.active .graphic-card:nth-child(1) { animation: fadeUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.10s; }
+        .fullscreen-weather.active .graphic-card:nth-child(2) { animation: fadeUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.15s; }
+        .fullscreen-weather.active .graphic-card:nth-child(3) { animation: fadeUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.20s; }
+        .fullscreen-weather.active .graphic-card:nth-child(4) { animation: fadeUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.25s; }
+        .fullscreen-weather.active .graphic-card:nth-child(5) { animation: fadeUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.30s; }
+        .fullscreen-weather.active .graphic-card:nth-child(6) { animation: fadeUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.35s; }
+        .fullscreen-weather.active .graphic-card:nth-child(7) { animation: fadeUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.40s; }
+        .fullscreen-weather.active .graphic-card:nth-child(8) { animation: fadeUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.45s; }
+        .fullscreen-weather.active .graphic-card:nth-child(9) { animation: fadeUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.50s; }
+
+        /* Inner SVG Animations Triggered on Open */
+        .anim-draw, .anim-grow, .anim-fade, .anim-spin, .anim-drop { animation: none; }
+        
+        .fullscreen-weather.active .anim-draw { stroke-dasharray: 200; stroke-dashoffset: 200; animation: drawPath 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.4s; }
+        .fullscreen-weather.active .anim-grow { transform: scaleY(0); transform-origin: bottom; animation: growUp 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards 0.5s; }
+        .fullscreen-weather.active .anim-fade { opacity: 0; transform: translateY(10px); animation: fadeUpMini 0.8s ease forwards 0.6s; }
+        .fullscreen-weather.active .anim-spin { transform-origin: center; animation: spinSlow 8s linear infinite; }
+        .fullscreen-weather.active .anim-drop { stroke-dasharray: 10; stroke-dashoffset: 10; animation: rainDrop 1.5s infinite linear; }
+
+        @keyframes drawPath { to { stroke-dashoffset: 0; } }
+        @keyframes growUp { to { transform: scaleY(1); } }
+        @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeUpMini { to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeDown { to { opacity: 1; transform: translateY(0); } }
+        @keyframes spinSlow { 100% { transform: rotate(360deg); } }
+        @keyframes rainDrop { 
+            0% { stroke-dashoffset: 10; transform: translateY(-10px); opacity: 0;}
+            50% { opacity: 1; }
+            100% { stroke-dashoffset: -10; transform: translateY(20px); opacity: 0; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- LOCK SCREEN VIEW -->
+    <div class="device-container">
+        <div class="date" id="date-display">Tuesday, March 17</div>
+        <div class="time" id="time-display">15:05</div>
+        
+        <!-- COMPACT WIDGET (Clicks to open fullscreen) -->
+        <div class="widget-panel" id="weather-widget">
+            <div class="weather-left">
+                <div class="weather-icon">🌤️</div>
+                <div class="weather-details">
+                    <div class="temp-main">28°</div>
+                    <div class="condition">Partly Cloudy</div>
+                    <div class="high-low">H:32° L:21°</div>
+                </div>
+            </div>
+            <div class="location">
+                Pune<br>
+                <span style="font-size: 0.8rem; color: rgba(255,255,255,0.6);">Tap for details</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- FULL SCREEN WEATHER APP OVERLAY -->
+    <div class="fullscreen-weather" id="fullscreen-weather">
+        <div class="fs-inner-container">
+            
+            <div class="fs-header">
+                <div>
+                    <div class="fs-city">Pune</div>
+                    <div class="fs-temp">28°</div>
+                    <div class="fs-cond">Partly Cloudy</div>
+                </div>
+                <button class="close-btn" id="close-weather">✕</button>
+            </div>
+
+            <div class="graphics-grid">
+                
+                <!-- 1. HUMIDITY -->
+                <div class="graphic-card">
+                    <div class="card-title">💧 Humidity</div>
+                    <div class="card-value-large">14%</div>
+                    <div class="graphic-svg-container">
+                        <svg viewBox="0 0 100 60" width="100%" height="100%">
+                            <path d="M10,50 L10,10 M30,50 L30,10 M50,50 L50,10 M70,50 L70,10 M90,50 L90,10" stroke="rgba(255,255,255,0.15)" stroke-width="8" stroke-linecap="round"/>
+                            <g class="anim-grow">
+                                <path d="M10,50 L10,40 M30,50 L30,30 M50,50 L50,35 M70,50 L70,45 M90,50 L90,20" stroke="#5facff" stroke-width="8" stroke-linecap="round"/>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="card-desc">The dew point is 5° right now.</div>
+                </div>
+
+                <!-- 2. UV INDEX -->
+                <div class="graphic-card">
+                    <div class="card-title">☀️ UV Index</div>
+                    <div class="card-value-large">8 <span style="font-size:1.2rem; font-weight:400;">Very High</span></div>
+                    <div class="graphic-svg-container">
+                        <svg viewBox="0 0 100 60" width="100%" height="100%">
+                            <defs>
+                                <linearGradient id="uvGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#78eb5b" />
+                                    <stop offset="30%" stop-color="#f5e133" />
+                                    <stop offset="60%" stop-color="#f58033" />
+                                    <stop offset="100%" stop-color="#a333f5" />
+                                </linearGradient>
+                            </defs>
+                            <path d="M 10 50 A 40 40 0 1 1 90 50" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="8" stroke-linecap="round"/>
+                            <path class="anim-draw" d="M 10 50 A 40 40 0 0 1 85 15" fill="none" stroke="url(#uvGrad)" stroke-width="8" stroke-linecap="round"/>
+                            <circle class="anim-fade" cx="85" cy="15" r="5" fill="white" stroke="#333" stroke-width="2"/>
+                        </svg>
+                    </div>
+                    <div class="card-desc">Max exposure limit reached.</div>
+                </div>
+
+                <!-- 3. AQI -->
+                <div class="graphic-card">
+                    <div class="card-title">🍃 AQI</div>
+                    <div class="card-value-large">94 <span style="font-size:1.2rem; font-weight:400;">Mod</span></div>
+                    <div class="graphic-svg-container">
+                        <svg viewBox="0 0 100 60" width="100%" height="100%">
+                            <path d="M 20 50 A 30 30 0 1 1 80 50" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="6" stroke-linecap="round"/>
+                            <path class="anim-draw" d="M 20 50 A 30 30 0 0 1 25 10" fill="none" stroke="#f5d433" stroke-width="6" stroke-linecap="round"/>
+                            <circle class="anim-fade" cx="25" cy="10" r="5" fill="#e6b117" stroke="white" stroke-width="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="card-desc">Air quality is acceptable.</div>
+                </div>
+
+                <!-- 4. VISIBILITY -->
+                <div class="graphic-card">
+                    <div class="card-title">👁️ Visibility</div>
+                    <div class="card-value-large">10 km</div>
+                    <div class="graphic-svg-container">
+                        <svg viewBox="0 0 100 60" width="100%" height="100%">
+                            <g class="anim-grow">
+                                <line x1="40" y1="10" x2="60" y2="10" stroke="#71d99d" stroke-width="6" stroke-linecap="round"/>
+                                <line x1="30" y1="25" x2="70" y2="25" stroke="#4bc47d" stroke-width="6" stroke-linecap="round"/>
+                                <line x1="20" y1="40" x2="80" y2="40" stroke="#2db363" stroke-width="6" stroke-linecap="round"/>
+                                <line x1="10" y1="55" x2="90" y2="55" stroke="#1c944d" stroke-width="6" stroke-linecap="round"/>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="card-desc">It's perfectly clear right now.</div>
+                </div>
+
+                <!-- 5. PRESSURE -->
+                <div class="graphic-card">
+                    <div class="card-title">⏱️ Pressure</div>
+                    <div class="card-value-large">1005 hPa</div>
+                    <div class="graphic-svg-container">
+                        <svg viewBox="0 0 100 60" width="100%" height="100%">
+                            <line x1="10" y1="30" x2="90" y2="45" stroke="rgba(255,255,255,0.2)" stroke-width="6" stroke-linecap="round"/>
+                            <line class="anim-draw" x1="10" y1="30" x2="70" y2="41" stroke="#87c3ff" stroke-width="6" stroke-linecap="round"/>
+                            <circle class="anim-fade" cx="70" cy="41" r="5" fill="white" stroke="#5facff" stroke-width="2"/>
+                        </svg>
+                    </div>
+                    <div class="card-desc">Falling. Expected to change.</div>
+                </div>
+
+                <!-- 6. SUN -->
+                <div class="graphic-card">
+                    <div class="card-title">🌅 Sun</div>
+                    <div class="card-value-large">6:34 <span style="font-size:1.2rem; font-weight:400;">PM</span></div>
+                    <div class="graphic-svg-container">
+                        <svg viewBox="0 0 100 60" width="100%" height="100%">
+                            <line x1="5" y1="50" x2="95" y2="50" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+                            <path d="M 15 50 Q 50 -10 85 50" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="4" stroke-linecap="round"/>
+                            <path class="anim-draw" d="M 15 50 Q 50 -10 70 20" fill="none" stroke="#f58033" stroke-width="4" stroke-linecap="round"/>
+                            <circle class="anim-fade" cx="70" cy="20" r="4" fill="#f5e133" stroke="#fff" stroke-width="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="card-desc">Sunrise was at 6:31 AM.</div>
+                </div>
+
+                <!-- 7. WIND -->
+                <div class="graphic-card">
+                    <div class="card-title">💨 Wind</div>
+                    <div class="card-value-large">14 km/h</div>
+                    <div class="graphic-svg-container">
+                        <svg viewBox="0 0 100 60" width="100%" height="100%">
+                            <!-- Compass Background -->
+                            <circle cx="50" cy="30" r="25" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="3" stroke-dasharray="2 4"/>
+                            <text x="50" y="10" font-size="8" fill="rgba(255,255,255,0.6)" text-anchor="middle">N</text>
+                            <!-- Animated Compass Needle -->
+                            <g class="anim-spin" style="transform-origin: 50px 30px;">
+                                <polygon points="50,10 55,30 50,50 45,30" fill="rgba(255,255,255,0.9)"/>
+                                <polygon points="50,10 55,30 50,30" fill="#5facff"/>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="card-desc">Blowing from North-West.</div>
+                </div>
+
+                <!-- 8. RAINFALL -->
+                <div class="graphic-card">
+                    <div class="card-title">🌧️ Rainfall</div>
+                    <div class="card-value-large">0 mm</div>
+                    <div class="graphic-svg-container">
+                        <svg viewBox="0 0 100 60" width="100%" height="100%">
+                            <path d="M20,55 L80,55" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-linecap="round"/>
+                            <!-- Animated Rain Drops -->
+                            <line class="anim-drop" x1="30" y1="10" x2="30" y2="25" stroke="#5facff" stroke-width="3" stroke-linecap="round" style="animation-delay: 0.1s"/>
+                            <line class="anim-drop" x1="50" y1="5" x2="50" y2="20" stroke="#87c3ff" stroke-width="3" stroke-linecap="round" style="animation-delay: 0.4s"/>
+                            <line class="anim-drop" x1="70" y1="15" x2="70" y2="30" stroke="#5facff" stroke-width="3" stroke-linecap="round" style="animation-delay: 0.2s"/>
+                        </svg>
+                    </div>
+                    <div class="card-desc">0 mm expected in next 24h.</div>
+                </div>
+
+                <!-- 9. FEELS LIKE (Dynamic sizing per platform) -->
+                <div class="graphic-card card-feels-like">
+                    <div class="feels-like-text">
+                        <div class="card-title">🌡️ Feels Like</div>
+                        <div class="card-value-large">30°</div>
+                        <div class="card-desc">Humidity is making it feel hotter than the actual temperature of 28°.</div>
+                    </div>
+                    <div class="graphic-svg-container feels-like-svg">
+                        <svg viewBox="0 0 100 100" width="100%" height="100%">
+                            <!-- Thermometer Background -->
+                            <path d="M40,75 A15,15 0 1,0 60,75 L60,25 A10,10 0 1,0 40,25 Z" fill="rgba(255,255,255,0.1)"/>
+                            <!-- Thermometer Fill Animated -->
+                            <g class="anim-grow" style="transform-origin: 50px 80px;">
+                                <path d="M42,75 A13,13 0 1,0 58,75 L58,40 L42,40 Z" fill="url(#tempGrad)"/>
+                            </g>
+                            <defs>
+                                <linearGradient id="tempGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+                                    <stop offset="0%" stop-color="#f5d433"/>
+                                    <stop offset="100%" stop-color="#ff5a5a"/>
+                                </linearGradient>
+                            </defs>
+                            <!-- Markings -->
+                            <line x1="62" y1="30" x2="70" y2="30" stroke="rgba(255,255,255,0.4)" stroke-width="2"/>
+                            <line x1="62" y1="45" x2="70" y2="45" stroke="rgba(255,255,255,0.4)" stroke-width="2"/>
+                            <line x1="62" y1="60" x2="70" y2="60" stroke="rgba(255,255,255,0.4)" stroke-width="2"/>
+                        </svg>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CLOCK LOGIC
+        let isShowingSeconds = false;
+
+        function updateClock() {
+            const now = new Date();
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            let seconds = now.getSeconds();
+            
+            hours = hours < 10 ? '0' + hours : hours;
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            seconds = seconds < 10 ? '0' + seconds : seconds;
+            
+            const options = { weekday: 'long', month: 'long', day: 'numeric' };
+            const dateString = now.toLocaleDateString('en-US', options);
+            
+            const timeElement = document.getElementById('time-display');
+            if (isShowingSeconds) {
+                timeElement.textContent = `${hours}:${minutes}:${seconds}`;
+            } else {
+                timeElement.textContent = `${hours}:${minutes}`;
+            }
+            
+            document.getElementById('date-display').textContent = dateString;
+        }
+
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        // INTERACTIVITY
+        const timeDisplay = document.getElementById('time-display');
+        timeDisplay.addEventListener('click', () => {
+            isShowingSeconds = !isShowingSeconds;
+            timeDisplay.classList.toggle('show-seconds');
+            updateClock();
+        });
+
+        // FULLSCREEN WEATHER LOGIC
+        const weatherWidget = document.getElementById('weather-widget');
+        const fullscreenWeather = document.getElementById('fullscreen-weather');
+        const closeWeatherBtn = document.getElementById('close-weather');
+
+        // Open Overlay
+        weatherWidget.addEventListener('click', () => {
+            fullscreenWeather.classList.add('active');
+            document.body.classList.add('weather-open');
+        });
+
+        // Close Overlay
+        closeWeatherBtn.addEventListener('click', () => {
+            fullscreenWeather.classList.remove('active');
+            document.body.classList.remove('weather-open');
+        });
+    </script>
+</body>
+</html>
